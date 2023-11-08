@@ -11,7 +11,7 @@
 
 #include "variante.h"
 #include "readcmd.h"
-
+#include "execuReader.h"
 #ifndef VARIANTE
 #error "Variante non défini !!"
 #endif
@@ -127,6 +127,7 @@ int main() {
                         }
 			printf("\n");
 		}
+		execuReader(l);
 	}
 
 }

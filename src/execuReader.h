@@ -1,1 +1,1 @@
-void execuReader(void);
+void execuReader(struct cmdline l);
