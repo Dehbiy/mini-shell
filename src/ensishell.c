@@ -103,7 +103,6 @@ int main() {
 
 		/* If input stream closed, normal termination */
 		if (!l) {
-		  
 			terminate(0);
 		}
 		
