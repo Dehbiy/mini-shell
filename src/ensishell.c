@@ -79,6 +79,7 @@ int main() {
 		   one memory leak per command seems unavoidable yet */
 		line = readline(prompt);
 		if (line == 0 || ! strncmp(line,"exit", 4)) {
+			freeBgProcess();
 			terminate(line);
 		}
 
@@ -103,6 +104,7 @@ int main() {
 
 		/* If input stream closed, normal termination */
 		if (!l) {
+			freeBgProcess();
 			terminate(0);
 		}
 		
@@ -119,6 +121,7 @@ int main() {
 		if (l->bg) printf("background (&)\n");
 
 		/* Display each command of the pipe */
+		
 		for (i=0; l->seq[i]!=0; i++) {
 			char **cmd = l->seq[i];
 			printf("seq[%d]: ", i);
