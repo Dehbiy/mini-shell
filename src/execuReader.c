@@ -10,14 +10,14 @@
 
 
 struct Cell{
-    char * commande;
+    char ** commande;
     pid_t pid;
     struct Cell* next; 
 };
 
 struct Cell * BG_PROCESSES = NULL;
 
-void addBgProcess(pid_t pid, char* commande){
+void addBgProcess(pid_t pid, char** commande){
     struct Cell *process = malloc(sizeof(struct Cell));
 
     if(process == NULL){
@@ -34,7 +34,15 @@ void addBgProcess(pid_t pid, char* commande){
 void jobs(){
     struct Cell* current = BG_PROCESSES;
     while(current != NULL){
-        printf("[%i]: %s\n", current->pid, current->commande);
+        int indx_sub_commande = 0;
+        printf("[%i]: ", current->pid);
+        while (current->commande[indx_sub_commande] != NULL)
+        {
+            printf("%s ", current->commande[indx_sub_commande]);
+            indx_sub_commande++;
+        }
+        printf("\n");
+        
         current = current->next;
     }
 
@@ -48,12 +56,23 @@ void freeBgProcess(){
     struct Cell* next = current->next;
     
     while(next != NULL){
+        int indx_sub_commande = 0;
+        while (current->commande[indx_sub_commande] != NULL)
+        {
+            free(current->commande[indx_sub_commande]);
+            indx_sub_commande++;
+        }
         free(current->commande);
         free(current);
         current = next;
         next = next->next;
     }
-
+    int indx_sub_commande = 0;
+    while (current->commande[indx_sub_commande] != NULL){
+            free(current->commande[indx_sub_commande]);
+            indx_sub_commande++;
+        }
+    free(current->commande);
     free(current);
 }
 
@@ -82,15 +101,34 @@ void execuReader(struct cmdline* l){
         waitpid(pid, &status, 0);
         return;
     }
-    
+    int size_seq = 0;
+    while (l->seq[0][size_seq]!=NULL)
+    {
+        size_seq++;
+    }
+    /*
     char * commande = malloc(20*sizeof(char));
-    
     if(commande == NULL){
         exit(1);
     }
-    strcpy(commande, l->seq[0][0]);
-    addBgProcess(pid, commande);
     
+    strcpy(commande, l->seq[0][0]);
+    
+    addBgProcess(pid, commande);
+    */
+
+    char ** commande = malloc((size_seq+1)*sizeof(char *));
+    if(commande == NULL){
+        exit(1);
+    }
+    for (int i=0;i<size_seq;i++) {
+        commande[i] = malloc(20*sizeof(char));
+        if(commande[i] == NULL){
+            exit(1);
+        }
+        strcpy(commande[i], l->seq[0][i]);
+    }
+    addBgProcess(pid, commande);
     printf("process %i is running is the background\n", pid);
 
 }
