@@ -50,6 +50,10 @@ void jobs(){
 
 }
 
+void signalHandler(int signal){
+    printf("Recieved SIGCHILD signal\n");
+}
+
 void freeBgProcess(){
     
     if(BG_PROCESSES == NULL) return;
@@ -86,8 +90,7 @@ void EXEcute(struct cmdline* l, pid_t pid, int num_seq) {
     execvp(l->seq[num_seq][0],l->seq[num_seq]);
     printf(" %s: Command not found\n", l->seq[num_seq][0]);
     printf("try: sudo apt install %s\n", l->seq[num_seq][0]);
-    freeBgProcess();
-    kill(pid,SIGTERM);
+    exit(0);
 }
 
 void setInput(struct cmdline* l){
@@ -108,18 +111,55 @@ void setOutput(struct cmdline* l){
 
 void execuReader(struct cmdline* l){
 
+    signal(SIGCHLD, signalHandler);
     int status;
     pid_t pid = fork();
+    
     if(pid<0) {
         printf("fork error");
         return;
     }
     if (pid==0) {
         if (l->seq[1] != NULL) {
-            int pipe_fd[2]; // Descripteurs de fichier du pipe
+            int num_seq;
+            for(num_seq = 1; l->seq[num_seq+1] != NULL; num_seq++){
+                int pipe_fd1[2]; // Descripteurs de fichier du pipe
+                int pipe_fd2[2]; // Descripteurs de fichier du pipe
+                
+                // Créer un pipe
+                if (pipe(pipe_fd1) == -1 || pipe(pipe_fd2) == -1  ) {
+                    perror("pipe");
+                    exit(EXIT_FAILURE);
+                }
+                pid_t pidCmd = fork();
+                if (pidCmd < 0) {
+                    printf("fork error");
+                    return;
+                }
+                if (pidCmd == 0) {
+                    setOutput(l);
+                    dup2(pipe_fd1[0],STDIN_FILENO);
+                    close(pipe_fd1[1]);
+                    close(pipe_fd1[0]);
 
+                    dup2(pipe_fd2[1],STDOUT_FILENO);
+                    close(pipe_fd2[0]);
+                    close(pipe_fd2[1]);
+
+                    EXEcute(l, pidCmd, num_seq);
+                }
+                else {
+                    setInput(l);
+                    dup2(pipe_fd1[1],STDOUT_FILENO);
+                    close(pipe_fd1[0]);
+                    close(pipe_fd1[1]);
+                    EXEcute(l,pidCmd,num_seq - 1);
+                }
+            }
+            int pipe_fd[2]; // Descripteurs de fichier du pipe
+            
             // Créer un pipe
-            if (pipe(pipe_fd) == -1) {
+            if (pipe(pipe_fd) == -1){
                 perror("pipe");
                 exit(EXIT_FAILURE);
             }
@@ -133,15 +173,18 @@ void execuReader(struct cmdline* l){
                 dup2(pipe_fd[0],STDIN_FILENO);
                 close(pipe_fd[1]);
                 close(pipe_fd[0]);
-                EXEcute(l,pidCmd,1);
+
+                EXEcute(l, pidCmd, num_seq);
             }
             else {
                 setInput(l);
                 dup2(pipe_fd[1],STDOUT_FILENO);
                 close(pipe_fd[0]);
                 close(pipe_fd[1]);
-                EXEcute(l,pidCmd,0);
+                EXEcute(l,pidCmd,num_seq - 1);
             }
+      
+
         }
         else {
             setInput(l);
@@ -149,6 +192,7 @@ void execuReader(struct cmdline* l){
             EXEcute(l,pid,0);   
         }         
     }
+
     if(!l->bg){
         waitpid(pid, &status, 0);
         return;
@@ -172,7 +216,7 @@ void execuReader(struct cmdline* l){
             free(commande[i]);
             commande[i] = NULL;
             break;
-            }
+        }
         strcpy(commande[i], l->seq[0][i]);
     }
     addBgProcess(pid, commande);

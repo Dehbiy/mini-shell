@@ -25,19 +25,27 @@
 #if USE_GUILE == 1
 #include <libguile.h>
 
-int question6_executer(char *line)
-{
-	/* Question 6: Insert your code to execute the command line
-	 * identically to the standard execution scheme:
-	 * parsecmd, then fork+execvp, for a single command.
-	 * pipe and i/o redirection are not required.
-	 */
-	printf("Not implemented yet: can not execute %s\n", line);
+int question6_executer(char* line) {
+    /* Question 6: Insert your code to execute the command line
+     * identically to the standard execution scheme:
+     * parsecmd, then fork+execvp, for a single command.
+     * pipe and i/o redirection are not required.
+     */
 
-	/* Remove this line when using parsecmd as it will free it */
-	free(line);
-	
-	return 0;
+     /* parsecmd free line and set it up to 0 */
+    struct cmdline* l = parsecmd(&line);
+
+    if (l->err) {
+        /* Syntax error, read another command */
+        printf("error: %s\n", l->err);
+    }
+
+    if (l->seq[0] != NULL){
+        execuReader(l);
+        printf("\n");
+    }
+
+    return 0;
 }
 
 SCM executer_wrapper(SCM x)
