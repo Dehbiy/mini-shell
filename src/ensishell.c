@@ -61,6 +61,13 @@ void terminate(char *line) {
 
 int main() {
         printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
+		printf("\n***WELCOME TO OUR SHELL***"
+        "\nCopyright @Youssef Elaasri & @Yakoub Dehbi"
+        "\n-Use the shell at your own risk..."
+        "\nList of Commands supported:"
+        "\n>all general commands available in UNIX shell"
+        "\n>pipe handling for the case of two commands\n"
+        );
 
 #if USE_GUILE == 1
         scm_init_guile();
