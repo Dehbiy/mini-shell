@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 
 struct Cell{
@@ -87,6 +89,23 @@ void EXEcute(struct cmdline* l, pid_t pid, int num_seq) {
     freeBgProcess();
     kill(pid,SIGTERM);
 }
+
+void setInput(struct cmdline* l){
+    if(l->in){
+        int fileDescriptor = open(l->in, O_RDONLY);
+        dup2(fileDescriptor, STDIN_FILENO);
+    }
+
+}
+
+
+void setOutput(struct cmdline* l){
+    if(l->out){
+        int fileDescriptor = open(l->out, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR );
+        dup2(fileDescriptor, STDOUT_FILENO);
+    }
+}
+
 void execuReader(struct cmdline* l){
 
     int status;
@@ -110,19 +129,25 @@ void execuReader(struct cmdline* l){
                 return;
             }
             if (pidCmd == 0) {
+                setOutput(l);
                 dup2(pipe_fd[0],STDIN_FILENO);
                 close(pipe_fd[1]);
                 close(pipe_fd[0]);
                 EXEcute(l,pidCmd,1);
             }
             else {
+                setInput(l);
                 dup2(pipe_fd[1],STDOUT_FILENO);
                 close(pipe_fd[0]);
                 close(pipe_fd[1]);
                 EXEcute(l,pidCmd,0);
             }
         }
-        else EXEcute(l,pid,0);        
+        else {
+            setInput(l);
+            setOutput(l);
+            EXEcute(l,pid,0);   
+        }         
     }
     if(!l->bg){
         waitpid(pid, &status, 0);
