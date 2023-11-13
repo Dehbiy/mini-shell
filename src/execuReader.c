@@ -76,8 +76,19 @@ void freeBgProcess(){
     free(current);
 }
 
-
+void EXEcute(struct cmdline* l, pid_t pid, int num_seq) {
+    if(strcmp(l->seq[num_seq][0], "jobs") == 0 && l->seq[num_seq][1] == NULL){
+        jobs();
+        exit(0);
+    }
+    execvp(l->seq[num_seq][0],l->seq[num_seq]);
+    printf(" %s: Command not found\n", l->seq[num_seq][0]);
+    printf("try: sudo apt install %s\n", l->seq[num_seq][0]);
+    freeBgProcess();
+    kill(pid,SIGTERM);
+}
 void execuReader(struct cmdline* l){
+
     int status;
     pid_t pid = fork();
     if(pid<0) {
@@ -85,17 +96,33 @@ void execuReader(struct cmdline* l){
         return;
     }
     if (pid==0) {
-        if(strcmp(l->seq[0][0], "jobs") == 0 && l->seq[0][1] == NULL){
-            jobs();
-            exit(0);
+        if (l->seq[1] != NULL) {
+            int pipe_fd[2]; // Descripteurs de fichier du pipe
+
+            // Créer un pipe
+            if (pipe(pipe_fd) == -1) {
+                perror("pipe");
+                exit(EXIT_FAILURE);
+            }
+            pid_t pidCmd = fork();
+            if (pidCmd < 0) {
+                printf("fork error");
+                return;
+            }
+            if (pidCmd == 0) {
+                dup2(pipe_fd[0],STDIN_FILENO);
+                close(pipe_fd[1]);
+                close(pipe_fd[0]);
+                EXEcute(l,pidCmd,1);
+            }
+            else {
+                dup2(pipe_fd[1],STDOUT_FILENO);
+                close(pipe_fd[0]);
+                close(pipe_fd[1]);
+                EXEcute(l,pidCmd,0);
+            }
         }
-        execvp(l->seq[0][0],l->seq[0]);
-        printf(" %s: Command not found\n", l->seq[0][0]);
-        printf("try: sudo apt install %s\n", l->seq[0][0]);
-        freeBgProcess();
-        kill(pid,SIGTERM);
-        return;
-        
+        else EXEcute(l,pid,0);        
     }
     if(!l->bg){
         waitpid(pid, &status, 0);
@@ -106,26 +133,21 @@ void execuReader(struct cmdline* l){
     {
         size_seq++;
     }
-    /*
-    char * commande = malloc(20*sizeof(char));
-    if(commande == NULL){
-        exit(1);
-    }
-    
-    strcpy(commande, l->seq[0][0]);
-    
-    addBgProcess(pid, commande);
-    */
 
     char ** commande = malloc((size_seq+1)*sizeof(char *));
     if(commande == NULL){
         exit(1);
     }
-    for (int i=0;i<size_seq;i++) {
+    for (int i=0;i<=size_seq;i++) {
         commande[i] = malloc(20*sizeof(char));
         if(commande[i] == NULL){
             exit(1);
         }
+        if (l->seq[0][i]== NULL) {
+            free(commande[i]);
+            commande[i] = NULL;
+            break;
+            }
         strcpy(commande[i], l->seq[0][i]);
     }
     addBgProcess(pid, commande);
