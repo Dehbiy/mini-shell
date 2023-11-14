@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -131,7 +132,7 @@ void changeSTDOUT(struct cmdline* l,int * pipedes, bool shouldSetInput){
 }
 
 
-void execuReader(struct cmdline* l){
+void execuReaderPipe(struct cmdline* l){
 
     signal(SIGCHLD, signalHandler);
     int status;
@@ -156,26 +157,35 @@ void execuReader(struct cmdline* l){
                 printf("fork error");
                 return;
             }
+            if(pidCmd == 0){
 
-            if (pidCmd == 0) {
-                bool shouldSetOutput = l->seq[2] == NULL;
-                changeSTDIN(l, pipe_fd1, shouldSetOutput);
+                pid_t pidCmdFirst = fork();
 
-                if(l->seq[2] != NULL){
-                    changeSTDOUT(l, pipe_fd2, false);
+                if(pidCmdFirst < 0){
+                    printf("fork error");
+                    return;
                 }
-
-                EXEcute(l, pidCmd, 1);
-            }
-            else {
-                changeSTDOUT(l, pipe_fd1, true);
-                EXEcute(l,pidCmd,0);
-            }
-            waitpid(-1, NULL, 0);
-
-        
-
             
+                if (pidCmdFirst == 0) {
+                    changeSTDOUT(l, pipe_fd1, true);
+                    EXEcute(l,pidCmd,0);
+                    
+                }
+                else {
+                    waitpid(pidCmdFirst, &status, 0);
+                    bool shouldSetOutput = l->seq[2] == NULL;
+                    changeSTDIN(l, pipe_fd1, shouldSetOutput);
+
+                    if(l->seq[2] != NULL){
+                        changeSTDOUT(l, pipe_fd2, false);
+                    }
+
+                    EXEcute(l, pidCmd, 1);
+                }
+            }
+
+            waitpid(pidCmd, &status, 0);
+            printf("\n***Im here***\n");
             int num_seq;
             if(l->seq[2] != NULL){
                 for(num_seq = 2; l->seq[num_seq + 1] && l->seq[num_seq + 2] != NULL; num_seq+=2){
@@ -188,19 +198,27 @@ void execuReader(struct cmdline* l){
                         printf("fork error");
                         return;
                     }
-                    if (pidCmd == 0) {
-                        changeSTDIN(l, pipe_fd1, false);
-                        changeSTDOUT(l, pipe_fd2, false);
-                        EXEcute(l, pidCmd, num_seq + 1);
+                    if(pidCmd==0){
+                        pid_t pidCmdFirst = fork();
+                        if(pidCmdFirst < 0){
+                            printf("fork error");
+                            return;
+                        }
+                        if(pidCmdFirst == 0){   
+                            changeSTDIN(l, pipe_fd2, false);
+                            changeSTDOUT(l, pipe_fd1, false);
+                            EXEcute(l,pidCmd,num_seq);
+                        }
+                        
+                        else {
+                            waitpid(pidCmdFirst, &status, 0);
+                            changeSTDIN(l, pipe_fd1, false);
+                            changeSTDOUT(l, pipe_fd2, false);
+                            EXEcute(l, pidCmd, num_seq + 1);
+                        }
                     }
-                    else {
-                        changeSTDIN(l, pipe_fd2, false);
-                        changeSTDOUT(l, pipe_fd1, false);
-                        EXEcute(l,pidCmd,num_seq);
-                    }
+                    waitpid(pidCmd, &status, 0);
                 }
-
-
                 if(l->seq[num_seq + 1] == NULL){
                     pid_t pidCmd = fork();
                     if (pidCmd < 0) {
@@ -208,11 +226,13 @@ void execuReader(struct cmdline* l){
                         return;
                     }
                     if (pidCmd == 0) {
-                        exit(0);
-                    }
-                    else {
                         changeSTDIN(l, pipe_fd2, true);
                         EXEcute(l,pidCmd,num_seq);
+
+                        
+                    }
+                    else {
+                        waitpid(pidCmd, &status, 0);
                     }
                 }
                 else{
@@ -221,35 +241,114 @@ void execuReader(struct cmdline* l){
                         printf("fork error");
                         return;
                     }
-                    if (pidCmd == 0) {
-                        changeSTDIN(l, pipe_fd1, true);
-                        EXEcute(l, pidCmd, num_seq + 1);
+                    if(pidCmd == 0){
+                        pid_t pidCmdFirst = fork();
+                        if (pidCmdFirst < 0) {
+                            printf("fork error");
+                            return;
+                        }
+                        if (pidCmdFirst == 0) {
+                            changeSTDIN(l, pipe_fd2, false);
+                            changeSTDOUT(l, pipe_fd1, false);
+                            EXEcute(l,pidCmd,num_seq);
+                            
+                        }
+                        else {
+                            waitpid(pidCmdFirst, &status, 0);
+                            changeSTDIN(l, pipe_fd1, true);
+                            EXEcute(l, pidCmd, num_seq + 1);
+                        }
                     }
-                    else {
-                        changeSTDIN(l, pipe_fd2, false);
-                        changeSTDOUT(l, pipe_fd1, false);
-                        EXEcute(l,pidCmd,num_seq);
-                    }
+                    waitpid(pidCmd, &status, 0);
                 }      
-
             }
 
-            close(pipe_fd1[0]);
-            close(pipe_fd1[1]);
-            close(pipe_fd2[0]);
-            close(pipe_fd2[1]);
-
-
-
+                
 
         }
+            
         else {
             setInput(l);
             setOutput(l);
             EXEcute(l,pid,0);   
         }
     }
+    if(!l->bg){
+        waitpid(pid, &status, 0);
+        printf("\n *************** I'M HEEEEEEEEEEEEEEERE ***************\n");
 
+        return;
+    }
+    int size_seq = 0;
+    while (l->seq[0][size_seq]!=NULL)
+    {
+        size_seq++;
+    }
+
+    char ** commande = malloc((size_seq+1)*sizeof(char *));
+    if(commande == NULL){
+        exit(1);
+    }
+    for (int i=0;i<=size_seq;i++) {
+        commande[i] = malloc(20*sizeof(char));
+        if(commande[i] == NULL){
+            exit(1);
+        }
+        if (l->seq[0][i]== NULL) {
+            free(commande[i]);
+            commande[i] = NULL;
+            break;
+        }
+        strcpy(commande[i], l->seq[0][i]);
+    }
+    addBgProcess(pid, commande);
+    printf("process %i is running is the background\n", pid);
+
+}
+
+void execuReader(struct cmdline* l){
+
+    int status;
+    pid_t pid = fork();
+    if(pid<0) {
+        printf("fork error");
+        return;
+    }
+    if (pid==0) {
+        if (l->seq[1] != NULL) {
+            int pipe_fd[2]; // Descripteurs de fichier du pipe
+
+            // Créer un pipe
+            if (pipe(pipe_fd) == -1) {
+                perror("pipe");
+                exit(EXIT_FAILURE);
+            }
+            pid_t pidCmd = fork();
+            if (pidCmd < 0) {
+                printf("fork error");
+                return;
+            }
+            if (pidCmd == 0) {
+                setOutput(l);
+                dup2(pipe_fd[0],STDIN_FILENO);
+                close(pipe_fd[1]);
+                close(pipe_fd[0]);
+                EXEcute(l,pidCmd,1);
+            }
+            else {
+                setInput(l);
+                dup2(pipe_fd[1],STDOUT_FILENO);
+                close(pipe_fd[0]);
+                close(pipe_fd[1]);
+                EXEcute(l,pidCmd,0);
+            }
+        }
+        else {
+            setInput(l);
+            setOutput(l);
+            EXEcute(l,pid,0);   
+        }         
+    }
     if(!l->bg){
         waitpid(pid, &status, 0);
         return;
@@ -273,7 +372,7 @@ void execuReader(struct cmdline* l){
             free(commande[i]);
             commande[i] = NULL;
             break;
-        }
+            }
         strcpy(commande[i], l->seq[0][i]);
     }
     addBgProcess(pid, commande);

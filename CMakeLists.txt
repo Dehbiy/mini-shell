@@ -13,7 +13,7 @@ enable_testing()
 # Vous devez editer la lignes SET suivante pour y mettre vos logins
 # et le numéro de la variante que vous avez choisi
 #########
-set(VARIANTE_SUJET 10)
+set(VARIANTE_SUJET 4) #On a implementé la pipes multiple dans la focntion execuReaderPipe mais on arrive pas a comprendre le bug qu'il y a. 
 ### FIN de la zone à éditer / END of the two line area to edit
 
 if (VARIANTE_SUJET EQUAL -1)
