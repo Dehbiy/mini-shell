@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include "stdbool.h"
 
 
 struct Cell{
@@ -109,6 +110,27 @@ void setOutput(struct cmdline* l){
     }
 }
 
+
+void changeSTDIN(struct cmdline* l,int * pipedes, bool shouldSetOutput){
+    if(shouldSetOutput){
+        setOutput(l);
+    }
+    dup2(pipedes[0],STDIN_FILENO);
+    //close(pipedes[1]);
+    //close(pipedes[0]);
+}
+
+
+void changeSTDOUT(struct cmdline* l,int * pipedes, bool shouldSetInput){
+    if(shouldSetInput){
+        setInput(l);
+    }
+    dup2(pipedes[1],STDOUT_FILENO);
+    //close(pipedes[0]);
+    //close(pipedes[1]);
+}
+
+
 void execuReader(struct cmdline* l){
 
     signal(SIGCHLD, signalHandler);
@@ -121,45 +143,11 @@ void execuReader(struct cmdline* l){
     }
     if (pid==0) {
         if (l->seq[1] != NULL) {
-            int num_seq;
-            for(num_seq = 1; l->seq[num_seq+1] != NULL; num_seq++){
-                int pipe_fd1[2]; // Descripteurs de fichier du pipe
-                int pipe_fd2[2]; // Descripteurs de fichier du pipe
-                
-                // Créer un pipe
-                if (pipe(pipe_fd1) == -1 || pipe(pipe_fd2) == -1  ) {
-                    perror("pipe");
-                    exit(EXIT_FAILURE);
-                }
-                pid_t pidCmd = fork();
-                if (pidCmd < 0) {
-                    printf("fork error");
-                    return;
-                }
-                if (pidCmd == 0) {
-                    setOutput(l);
-                    dup2(pipe_fd1[0],STDIN_FILENO);
-                    close(pipe_fd1[1]);
-                    close(pipe_fd1[0]);
 
-                    dup2(pipe_fd2[1],STDOUT_FILENO);
-                    close(pipe_fd2[0]);
-                    close(pipe_fd2[1]);
-
-                    EXEcute(l, pidCmd, num_seq);
-                }
-                else {
-                    setInput(l);
-                    dup2(pipe_fd1[1],STDOUT_FILENO);
-                    close(pipe_fd1[0]);
-                    close(pipe_fd1[1]);
-                    EXEcute(l,pidCmd,num_seq - 1);
-                }
-            }
-            int pipe_fd[2]; // Descripteurs de fichier du pipe
+            int pipe_fd1[2]; // Descripteurs de fichier du pipe
+            int pipe_fd2[2];
             
-            // Créer un pipe
-            if (pipe(pipe_fd) == -1){
+            if (pipe(pipe_fd1) == -1 || pipe(pipe_fd2) == -1){
                 perror("pipe");
                 exit(EXIT_FAILURE);
             }
@@ -168,29 +156,98 @@ void execuReader(struct cmdline* l){
                 printf("fork error");
                 return;
             }
-            if (pidCmd == 0) {
-                setOutput(l);
-                dup2(pipe_fd[0],STDIN_FILENO);
-                close(pipe_fd[1]);
-                close(pipe_fd[0]);
 
-                EXEcute(l, pidCmd, num_seq);
+            if (pidCmd == 0) {
+                bool shouldSetOutput = l->seq[2] == NULL;
+                changeSTDIN(l, pipe_fd1, shouldSetOutput);
+
+                if(l->seq[2] != NULL){
+                    changeSTDOUT(l, pipe_fd2, false);
+                }
+
+                EXEcute(l, pidCmd, 1);
             }
             else {
-                setInput(l);
-                dup2(pipe_fd[1],STDOUT_FILENO);
-                close(pipe_fd[0]);
-                close(pipe_fd[1]);
-                EXEcute(l,pidCmd,num_seq - 1);
+                changeSTDOUT(l, pipe_fd1, true);
+                EXEcute(l,pidCmd,0);
             }
-      
+            waitpid(-1, NULL, 0);
+
+        
+
+            
+            int num_seq;
+            if(l->seq[2] != NULL){
+                for(num_seq = 2; l->seq[num_seq + 1] && l->seq[num_seq + 2] != NULL; num_seq+=2){
+                    if (pipe(pipe_fd1) == -1){
+                        perror("pipe");
+                        exit(EXIT_FAILURE);
+                    }
+                    pid_t pidCmd = fork();
+                    if (pidCmd < 0) {
+                        printf("fork error");
+                        return;
+                    }
+                    if (pidCmd == 0) {
+                        changeSTDIN(l, pipe_fd1, false);
+                        changeSTDOUT(l, pipe_fd2, false);
+                        EXEcute(l, pidCmd, num_seq + 1);
+                    }
+                    else {
+                        changeSTDIN(l, pipe_fd2, false);
+                        changeSTDOUT(l, pipe_fd1, false);
+                        EXEcute(l,pidCmd,num_seq);
+                    }
+                }
+
+
+                if(l->seq[num_seq + 1] == NULL){
+                    pid_t pidCmd = fork();
+                    if (pidCmd < 0) {
+                        printf("fork error");
+                        return;
+                    }
+                    if (pidCmd == 0) {
+                        exit(0);
+                    }
+                    else {
+                        changeSTDIN(l, pipe_fd2, true);
+                        EXEcute(l,pidCmd,num_seq);
+                    }
+                }
+                else{
+                    pid_t pidCmd = fork();
+                    if (pidCmd < 0) {
+                        printf("fork error");
+                        return;
+                    }
+                    if (pidCmd == 0) {
+                        changeSTDIN(l, pipe_fd1, true);
+                        EXEcute(l, pidCmd, num_seq + 1);
+                    }
+                    else {
+                        changeSTDIN(l, pipe_fd2, false);
+                        changeSTDOUT(l, pipe_fd1, false);
+                        EXEcute(l,pidCmd,num_seq);
+                    }
+                }      
+
+            }
+
+            close(pipe_fd1[0]);
+            close(pipe_fd1[1]);
+            close(pipe_fd2[0]);
+            close(pipe_fd2[1]);
+
+
+
 
         }
         else {
             setInput(l);
             setOutput(l);
             EXEcute(l,pid,0);   
-        }         
+        }
     }
 
     if(!l->bg){
